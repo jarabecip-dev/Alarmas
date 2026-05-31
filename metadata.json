@@ -1,0 +1,6 @@
+{
+  "name": "Alarmas",
+  "description": "Una aplicación de alarmas offline con calendario, reloj, mensajes escritos o grabados por voz, y tonos personalizados.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
