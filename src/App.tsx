@@ -47,8 +47,26 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'form' | 'list' | 'future' | 'settings'>('list');
   const [ringingAlarmId, setRingingAlarmId] = useState<string | null>(null);
 
+  // PWA installation state controls
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
+
   // Load alarms & settings from local offline storage initially
   useEffect(() => {
+    // Check if currently running in fullscreen standalone mode
+    const checkStandalone = window.matchMedia('(display-mode: standalone)').matches || 
+                          (window.navigator as any).standalone === true;
+    setIsStandalone(checkStandalone);
+
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallPrompt(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
     try {
       const savedAlarms = localStorage.getItem('local_alarms');
       if (savedAlarms) {
@@ -66,7 +84,22 @@ export default function App() {
     } catch (e) {
       console.error('Failed to load storage values', e);
     }
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
   }, []);
+
+  const handleInstallApp = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      console.log('User installed the PWA app');
+      setShowInstallPrompt(false);
+    }
+    setDeferredPrompt(null);
+  };
 
   // Persistent storage synchronizer helper
   const saveAlarms = (updatedAlarms: Alarm[]) => {
@@ -244,6 +277,42 @@ export default function App() {
             Programación horaria inteligente protegida localmente en el navegador, sin necesidad de conexión a internet.
           </p>
         </div>
+
+        {/* Banner de Instalación (PWA) */}
+        {!isStandalone && (
+          <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-150 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+            <div className="flex gap-3 items-start">
+              <img 
+                src="/icon.png" 
+                alt="Logo reloj" 
+                className="w-10 h-10 rounded-xl shadow-xs border border-emerald-200/50 bg-white p-1 hover:rotate-12 transition-transform duration-300"
+                referrerPolicy="no-referrer" 
+              />
+              <div>
+                <h4 className="font-extrabold text-sm text-slate-800">Instalar aplicación en tu teléfono</h4>
+                <p className="text-xs text-slate-500 font-sans mt-0.5 leading-relaxed">
+                  Agrégala como acceso directo con su logo de reloj para abrirla sin abrir el navegador y para que funcione 100% offline.
+                </p>
+              </div>
+            </div>
+            
+            <div className="shrink-0 flex items-center justify-end">
+              {showInstallPrompt ? (
+                <button
+                  type="button"
+                  onClick={handleInstallApp}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition active:scale-95 whitespace-nowrap cursor-pointer"
+                >
+                  Descargar / Instalar
+                </button>
+              ) : (
+                <div className="text-[11px] text-slate-500 font-sans leading-tight max-w-[200px] border-l-2 border-emerald-200 pl-2">
+                  En iOS/Safari, pulsa <span className="font-semibold text-emerald-700">Compartir ↑</span> y luego <span className="font-semibold text-emerald-700">Añadir a pantalla de inicio ⊞</span>.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Live Digital Clock Component */}
         <DigitalClock />
