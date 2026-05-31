@@ -58,6 +58,42 @@ export default function App() {
   const [notificationPermission, setNotificationPermission] = useState<string>('default');
   const [isWakePanelExpanded, setIsWakePanelExpanded] = useState<boolean>(true);
 
+  // Extreme Background Audio keep-wake states
+  const [isSilentAudioPlaying, setIsSilentAudioPlaying] = useState<boolean>(false);
+  const silentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [silentAudioUrl, setSilentAudioUrl] = useState<string>('');
+
+  useEffect(() => {
+    // Generate an 8-sample, 1-second dynamic silent WAV file to feed background looping
+    const soundData = new Uint8Array([
+      0x52, 0x49, 0x46, 0x46, // "RIFF"
+      0x24, 0x00, 0x00, 0x00, // file length - 8 (36 bytes)
+      0x57, 0x41, 0x56, 0x45, // "WAVE"
+      0x66, 0x6d, 0x74, 0x20, // "fmt "
+      0x10, 0x00, 0x00, 0x00, // size of format subchunk (16)
+      0x01, 0x00,             // Format PCM (1)
+      0x01, 0x00,             // Channels (1)
+      0x40, 0x1f, 0x00, 0x00, // Sample rate (8000 Hz)
+      0x40, 0x1f, 0x00, 0x00, // Byte rate (8000 * 1 * 8 / 8 = 8000)
+      0x01, 0x00,             // Block align (1)
+      0x08, 0x00,             // Bits per sample (8)
+      0x64, 0x61, 0x74, 0x61, // "data"
+      0x08, 0x00, 0x00, 0x00, // size of data section (8)
+      0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80 // midpoint silence data
+    ]);
+    const blob = new Blob([soundData], { type: 'audio/wav' });
+    const url = URL.createObjectURL(blob);
+    setSilentAudioUrl(url);
+
+    return () => {
+      URL.revokeObjectURL(url);
+      if (silentAudioRef.current) {
+        silentAudioRef.current.pause();
+        silentAudioRef.current = null;
+      }
+    };
+  }, []);
+
   // Load alarms & settings from local offline storage initially
   useEffect(() => {
     // Check initial notification state
@@ -181,6 +217,65 @@ export default function App() {
       console.error('Failed to request notification permission', e);
     }
   };
+
+  // Extreme Background Audio handlers
+  const handleToggleSilentAudio = () => {
+    if (isSilentAudioPlaying) {
+      if (silentAudioRef.current) {
+        silentAudioRef.current.pause();
+        silentAudioRef.current = null;
+      }
+      setIsSilentAudioPlaying(false);
+      setIsWakePanelExpanded(false);
+    } else {
+      if (silentAudioUrl) {
+        try {
+          const audio = new Audio(silentAudioUrl);
+          audio.loop = true;
+          audio.volume = 0.01; // barely audibly low, but present to force browser activation
+          audio.play()
+            .then(() => {
+              silentAudioRef.current = audio;
+              setIsSilentAudioPlaying(true);
+              setIsWakePanelExpanded(false);
+            })
+            .catch((err) => {
+              console.error("No se pudo iniciar el audio silencioso:", err);
+              alert("Por favor habilita los permisos de audio interactuando con la pantalla.");
+            });
+        } catch (err) {
+          console.error(err);
+        }
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (isSilentAudioPlaying && 'mediaSession' in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: 'Alarmas en Segundo Plano Activo',
+        artist: 'Sistema de Alarma Offline',
+        album: 'Audio de vigilia reproduciéndose',
+        artwork: [
+          { src: '/icon.png', sizes: '192x192', type: 'image/png' },
+          { src: '/icon.png', sizes: '512x512', type: 'image/png' },
+        ]
+      });
+
+      navigator.mediaSession.setActionHandler('play', () => {
+        if (silentAudioRef.current) {
+          silentAudioRef.current.play();
+          setIsSilentAudioPlaying(true);
+        }
+      });
+      navigator.mediaSession.setActionHandler('pause', () => {
+        if (silentAudioRef.current) {
+          silentAudioRef.current.pause();
+          setIsSilentAudioPlaying(false);
+        }
+      });
+    }
+  }, [isSilentAudioPlaying]);
 
   useEffect(() => {
     // Re-acquire wake lock if active when returning to visibility
@@ -430,14 +525,14 @@ export default function App() {
           >
             <div className="flex items-center gap-2">
               <ShieldCheck className="w-5 h-5 text-emerald-400 group-hover:scale-110 transition-transform" />
-              <h3 className="font-extrabold text-sm tracking-wide text-white uppercase font-sans group-hover:text-emerald-300 transition-colors">Vigilia y Alertas en Segundo Plano</h3>
+              <h3 className="font-extrabold text-sm tracking-wide text-white uppercase font-sans group-hover:text-emerald-300 transition-colors">Vigilia y Alertas de Fondo</h3>
             </div>
             <div className="flex items-center gap-2.5">
               <span className="flex h-2 w-2 relative">
-                {wakeLockActive && (
+                {(wakeLockActive || isSilentAudioPlaying) && (
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 )}
-                <span className={`relative inline-flex rounded-full h-2 w-2 ${wakeLockActive ? 'bg-emerald-400' : 'bg-slate-600'}`}></span>
+                <span className={`relative inline-flex rounded-full h-2 w-2 ${(wakeLockActive || isSilentAudioPlaying) ? 'bg-emerald-400' : 'bg-slate-600'}`}></span>
               </span>
               {isWakePanelExpanded ? (
                 <ChevronUp className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
@@ -450,19 +545,19 @@ export default function App() {
           {isWakePanelExpanded && (
             <div className="mt-4 space-y-4 animate-fade-in">
               <p className="text-xs text-slate-400 font-sans leading-relaxed">
-                Los navegadores suspenden los procesos inactivos para ahorrar batería. Sigue estos pasos para garantizar que tus alarmas suenen perfectamente si el celular está bloqueado.
+                Los sistemas de celulares suspenden los procesos inactivos para ahorrar batería. <strong className="text-emerald-400">Importante:</strong> Si cierras ("deslizar" hacia arriba) la aplicación por completo, ningún código web puede ejecutarse. Sigue estos pasos para garantizar que tus alarmas suenen perfectamente al minimizar la app o apagar la pantalla.
               </p>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {/* Control 1: Wake Lock */}
                 <div className="p-3 bg-slate-800/60 hover:bg-slate-800 rounded-2xl border border-slate-700/50 flex flex-col justify-between space-y-3">
                   <div>
                     <div className="flex items-center gap-1.5 text-xs font-bold text-white">
                       <Sun className="w-4 h-4 text-emerald-400" />
-                      <span>Modo "Mesita de Noche"</span>
+                      <span>Pantalla Activa</span>
                     </div>
                     <p className="text-[10px] text-slate-400 font-sans mt-1 leading-normal">
-                      Mantiene la aplicación activa impidiendo que tu celular se apague o suspenda el proceso de alarma.
+                      Evita que tu celular apague la pantalla o suspenda el reloj al dejarlo apoyado en la mesita.
                     </p>
                   </div>
                   <button
@@ -472,7 +567,7 @@ export default function App() {
                       e.stopPropagation();
                       wakeLockActive ? releaseWakeLock() : requestWakeLock();
                     }}
-                    className={`w-full py-2 px-3 rounded-xl font-bold text-[11px] flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer ${
+                    className={`w-full py-2 px-2 rounded-xl font-bold text-[10px] flex items-center justify-center gap-1 transition active:scale-95 cursor-pointer ${
                       wakeLockActive 
                         ? 'bg-rose-600 text-white hover:bg-rose-700' 
                         : 'bg-emerald-600 text-white hover:bg-emerald-700'
@@ -481,12 +576,12 @@ export default function App() {
                     {wakeLockActive ? (
                       <>
                         <EyeOff className="w-3.5 h-3.5" />
-                        <span>Desactivar Modo Activo</span>
+                        <span>Desactivar pantalla</span>
                       </>
                     ) : (
                       <>
                         <Eye className="w-3.5 h-3.5" />
-                        <span>Evitar que se Apague</span>
+                        <span>Mantener pantalla</span>
                       </>
                     )}
                   </button>
@@ -500,7 +595,7 @@ export default function App() {
                       <span>Alertas del Teléfono</span>
                     </div>
                     <p className="text-[10px] text-slate-400 font-sans mt-1 leading-normal">
-                      Permite lanzar alertas audibles nativas a tu pantalla de bloqueo incluso con la app cerrada o minimizada.
+                      Permite disparar avisos con sonido si la aplicación llega a estar en el fondo.
                     </p>
                   </div>
                   <button
@@ -511,7 +606,7 @@ export default function App() {
                       requestNotificationPermission();
                     }}
                     disabled={notificationPermission === 'granted'}
-                    className={`w-full py-2 px-3 rounded-xl font-bold text-[11px] flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer ${
+                    className={`w-full py-2 px-2 rounded-xl font-bold text-[10px] flex items-center justify-center gap-1 transition active:scale-95 cursor-pointer ${
                       notificationPermission === 'granted'
                         ? 'bg-slate-800 text-emerald-400 border border-emerald-500/20 cursor-not-allowed'
                         : 'bg-emerald-600 text-white hover:bg-emerald-700'
@@ -530,25 +625,60 @@ export default function App() {
                     )}
                   </button>
                 </div>
+
+                {/* Control 3: Extreme Background audio loop */}
+                <div className="p-3 bg-slate-800/60 hover:bg-slate-800 rounded-2xl border border-slate-700/50 flex flex-col justify-between space-y-3">
+                  <div>
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                      <Volume2 className="w-4 h-4 text-emerald-400" />
+                      <span>Segundo Plano Activo</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-sans mt-1 leading-normal">
+                      Permite que la app siga vigilando el tiempo con el teléfono bloqueado o minimizada.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    id="btn-background-audio-toggle"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggleSilentAudio();
+                    }}
+                    className={`w-full py-2 px-2 rounded-xl font-bold text-[10px] flex items-center justify-center gap-1 transition active:scale-95 cursor-pointer ${
+                      isSilentAudioPlaying 
+                        ? 'bg-rose-600 text-white hover:bg-rose-700' 
+                        : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                    }`}
+                  >
+                    {isSilentAudioPlaying ? (
+                      <>
+                        <Volume2 className="w-3.5 h-3.5 animate-bounce" />
+                        <span>Detener Segundo Plano</span>
+                      </>
+                    ) : (
+                      <>
+                        <Volume2 className="w-3.5 h-3.5" />
+                        <span>Activar Segundo Plano</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
 
               <div className="border-t border-slate-800/80 pt-3 text-[11px] text-slate-400 font-sans space-y-2">
                 <div className="flex items-center gap-1 font-bold text-slate-300">
                   <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Instrucciones para un funcionamiento 100% confiable:</span>
+                  <span>¿Cómo funciona el Segundo Plano Activo?</span>
                 </div>
                 <ul className="list-disc pl-4 space-y-1.5 text-slate-400 leading-normal">
                   <li>
-                    <span className="font-semibold text-emerald-400">¿Cerrar u Ocultar?</span> Puedes minimizar la aplicación si habilitas <strong className="text-white">Alertas del Teléfono</strong> arriba. La alarma sonará a través de un aviso oficial del sistema operativo.
+                    <strong className="text-white">Truco del reproductor:</strong> Al encender <strong className="text-emerald-400">Segundo Plano Activo</strong>, la aplicación empieza a reproducir un bucle de audio silencioso imperceptible. Esto le indica al celular que la app "está reproduciendo música" (similar a Spotify), evitando que el procesador suspenda la alarma al bloquear la pantalla.
                   </li>
                   <li>
-                    <span className="font-semibold text-emerald-400">iOS (Safari / iPhone):</span> Es sumamente recomendado <strong className="text-white">Instalar la App</strong> (Compartir → Añadir a pantalla de inicio). Esto evita que el navegador desactive la app por inactividad.
+                    <span className="font-semibold text-emerald-400">¡No la cierres!</span> No deslices la app hacia arriba para cerrarla del todo en el celular, ya que eso apaga su proceso de fondo. Mantén la pestaña abierta o minimizada.
                   </li>
                   <li>
-                    <span className="font-semibold text-emerald-400">Android (Chrome / MIUI):</span> Mantén presionado el icono de la App en tu pantalla de inicio → <strong className="text-white">Información de la aplicación</strong> → <strong className="text-white">Ahorro de batería</strong> y selecciona <strong className="text-white">Sin restricciones</strong>. Esto permite temporizadores indefinidos de fondo.
-                  </li>
-                  <li>
-                    <span className="font-semibold text-emerald-400">¿Celular apagado por completo?</span> Si el teléfono está apagado físicamente, ningún software web puede ejecutarse. Te recomendamos dejar el teléfono encendido o en reposo sobre un soporte de carga.
+                    <span className="font-semibold text-emerald-400">Android (Xiaomi / Samsung / etc.):</span> Mantén presionado el icono de la App → <strong className="text-white">Información de la aplicación</strong> → <strong className="text-white">Ahorro de batería</strong> y selecciona <strong className="text-white">Sin restricciones</strong>. Esto le permite funcionar por horas seguidas sin interrupción de fondo.
                   </li>
                 </ul>
               </div>
