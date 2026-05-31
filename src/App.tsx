@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { Bell, List, Clock, Settings, AlertCircle, Sparkles, ShieldCheck, Smartphone, Eye, EyeOff, ShieldAlert, Zap, Volume2, Sun } from 'lucide-react';
+import { Bell, List, Clock, Settings, AlertCircle, Sparkles, ShieldCheck, Smartphone, Eye, EyeOff, ShieldAlert, Zap, Volume2, Sun, ChevronDown, ChevronUp } from 'lucide-react';
 import { Alarm, AppSettings } from './types';
 import DigitalClock from './components/DigitalClock';
 import AlarmForm from './components/AlarmForm';
@@ -56,6 +56,7 @@ export default function App() {
   const [wakeLockActive, setWakeLockActive] = useState(false);
   const wakeLockRef = useRef<any>(null);
   const [notificationPermission, setNotificationPermission] = useState<string>('default');
+  const [isWakePanelExpanded, setIsWakePanelExpanded] = useState<boolean>(true);
 
   // Load alarms & settings from local offline storage initially
   useEffect(() => {
@@ -138,6 +139,7 @@ export default function App() {
         wakeLockRef.current = lock;
         setWakeLockActive(true);
         console.log('Wake Lock holding screen active');
+        setIsWakePanelExpanded(false); // minimize after selection
         
         lock.addEventListener('release', () => {
           setWakeLockActive(false);
@@ -159,6 +161,7 @@ export default function App() {
       }
       wakeLockRef.current = null;
       setWakeLockActive(false);
+      setIsWakePanelExpanded(false); // minimize after selection
     }
   };
 
@@ -170,6 +173,7 @@ export default function App() {
     try {
       const permission = await Notification.requestPermission();
       setNotificationPermission(permission);
+      setIsWakePanelExpanded(false); // minimize after selection
       if (permission === 'granted') {
         alert('¡Excelente! Las notificaciones del sistema han sido autorizadas para sonar en segundo plano.');
       }
@@ -418,117 +422,138 @@ export default function App() {
         <DigitalClock />
 
         {/* Panel de Control de Segundo Plano y Vigilia */}
-        <div className="bg-slate-900 text-slate-100 rounded-3xl p-5 border border-slate-800 shadow-lg space-y-4" id="background-wake-control">
-          <div className="flex items-center justify-between">
+        <div className="bg-slate-900 text-slate-100 rounded-3xl p-5 border border-slate-800 shadow-lg" id="background-wake-control">
+          <div 
+            onClick={() => setIsWakePanelExpanded(!isWakePanelExpanded)}
+            className="flex items-center justify-between cursor-pointer select-none group"
+            title="Haz clic para expandir o contraer panel de segundo plano"
+          >
             <div className="flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 text-emerald-400" />
-              <h3 className="font-extrabold text-sm tracking-wide text-white uppercase font-sans">Vigilia y Alertas en Segundo Plano</h3>
+              <ShieldCheck className="w-5 h-5 text-emerald-400 group-hover:scale-110 transition-transform" />
+              <h3 className="font-extrabold text-sm tracking-wide text-white uppercase font-sans group-hover:text-emerald-300 transition-colors">Vigilia y Alertas en Segundo Plano</h3>
             </div>
-            <span className="flex h-2 w-2 relative">
-              {wakeLockActive && (
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-2 w-2 relative">
+                {wakeLockActive && (
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                )}
+                <span className={`relative inline-flex rounded-full h-2 w-2 ${wakeLockActive ? 'bg-emerald-400' : 'bg-slate-600'}`}></span>
+              </span>
+              {isWakePanelExpanded ? (
+                <ChevronUp className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-emerald-400 animate-pulse group-hover:text-white transition-colors" />
               )}
-              <span className={`relative inline-flex rounded-full h-2 w-2 ${wakeLockActive ? 'bg-emerald-400' : 'bg-slate-600'}`}></span>
-            </span>
+            </div>
           </div>
 
-          <p className="text-xs text-slate-400 font-sans leading-relaxed">
-            Los navegadores suspenden los procesos inactivos para ahorrar batería. Sigue estos pasos para garantizar que tus alarmas suenen perfectamente si el celular está bloqueado.
-          </p>
+          {isWakePanelExpanded && (
+            <div className="mt-4 space-y-4 animate-fade-in">
+              <p className="text-xs text-slate-400 font-sans leading-relaxed">
+                Los navegadores suspenden los procesos inactivos para ahorrar batería. Sigue estos pasos para garantizar que tus alarmas suenen perfectamente si el celular está bloqueado.
+              </p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Control 1: Wake Lock */}
-            <div className="p-3 bg-slate-800/60 hover:bg-slate-800 rounded-2xl border border-slate-700/50 flex flex-col justify-between space-y-3">
-              <div>
-                <div className="flex items-center gap-1.5 text-xs font-bold text-white">
-                  <Sun className="w-4 h-4 text-emerald-400" />
-                  <span>Modo "Mesita de Noche"</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Control 1: Wake Lock */}
+                <div className="p-3 bg-slate-800/60 hover:bg-slate-800 rounded-2xl border border-slate-700/50 flex flex-col justify-between space-y-3">
+                  <div>
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                      <Sun className="w-4 h-4 text-emerald-400" />
+                      <span>Modo "Mesita de Noche"</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-sans mt-1 leading-normal">
+                      Mantiene la aplicación activa impidiendo que tu celular se apague o suspenda el proceso de alarma.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    id="btn-wake-toggle"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      wakeLockActive ? releaseWakeLock() : requestWakeLock();
+                    }}
+                    className={`w-full py-2 px-3 rounded-xl font-bold text-[11px] flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer ${
+                      wakeLockActive 
+                        ? 'bg-rose-600 text-white hover:bg-rose-700' 
+                        : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                    }`}
+                  >
+                    {wakeLockActive ? (
+                      <>
+                        <EyeOff className="w-3.5 h-3.5" />
+                        <span>Desactivar Modo Activo</span>
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Evitar que se Apague</span>
+                      </>
+                    )}
+                  </button>
                 </div>
-                <p className="text-[10px] text-slate-400 font-sans mt-1 leading-normal">
-                  Mantiene la aplicación activa impidiendo que tu celular se apague o suspenda el proceso de alarma.
-                </p>
-              </div>
-              <button
-                type="button"
-                id="btn-wake-toggle"
-                onClick={wakeLockActive ? releaseWakeLock : requestWakeLock}
-                className={`w-full py-2 px-3 rounded-xl font-bold text-[11px] flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer ${
-                  wakeLockActive 
-                    ? 'bg-rose-600 text-white hover:bg-rose-700' 
-                    : 'bg-emerald-600 text-white hover:bg-emerald-700'
-                }`}
-              >
-                {wakeLockActive ? (
-                  <>
-                    <EyeOff className="w-3.5 h-3.5" />
-                    <span>Desactivar Modo Activo</span>
-                  </>
-                ) : (
-                  <>
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>Evitar que se Apague</span>
-                  </>
-                )}
-              </button>
-            </div>
 
-            {/* Control 2: Notification Permission */}
-            <div className="p-3 bg-slate-800/60 hover:bg-slate-800 rounded-2xl border border-slate-700/50 flex flex-col justify-between space-y-3">
-              <div>
-                <div className="flex items-center gap-1.5 text-xs font-bold text-white">
-                  <Smartphone className="w-4 h-4 text-emerald-400" />
-                  <span>Alertas del Teléfono</span>
+                {/* Control 2: Notification Permission */}
+                <div className="p-3 bg-slate-800/60 hover:bg-slate-800 rounded-2xl border border-slate-700/50 flex flex-col justify-between space-y-3">
+                  <div>
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                      <Smartphone className="w-4 h-4 text-emerald-400" />
+                      <span>Alertas del Teléfono</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-sans mt-1 leading-normal">
+                      Permite lanzar alertas audibles nativas a tu pantalla de bloqueo incluso con la app cerrada o minimizada.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    id="btn-notif-toggle"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      requestNotificationPermission();
+                    }}
+                    disabled={notificationPermission === 'granted'}
+                    className={`w-full py-2 px-3 rounded-xl font-bold text-[11px] flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer ${
+                      notificationPermission === 'granted'
+                        ? 'bg-slate-800 text-emerald-400 border border-emerald-500/20 cursor-not-allowed'
+                        : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                    }`}
+                  >
+                    {notificationPermission === 'granted' ? (
+                      <>
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <span>Alertas Habilitadas</span>
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="w-3.5 h-3.5" />
+                        <span>Habilitar Alertas</span>
+                      </>
+                    )}
+                  </button>
                 </div>
-                <p className="text-[10px] text-slate-400 font-sans mt-1 leading-normal">
-                  Permite lanzar alertas audibles nativas a tu pantalla de bloqueo incluso con la app cerrada o minimizada.
-                </p>
               </div>
-              <button
-                type="button"
-                id="btn-notif-toggle"
-                onClick={requestNotificationPermission}
-                disabled={notificationPermission === 'granted'}
-                className={`w-full py-2 px-3 rounded-xl font-bold text-[11px] flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer ${
-                  notificationPermission === 'granted'
-                    ? 'bg-slate-800 text-emerald-400 border border-emerald-500/20 cursor-not-allowed'
-                    : 'bg-emerald-600 text-white hover:bg-emerald-700'
-                }`}
-              >
-                {notificationPermission === 'granted' ? (
-                  <>
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    <span>Alertas Habilitadas</span>
-                  </>
-                ) : (
-                  <>
-                    <Zap className="w-3.5 h-3.5" />
-                    <span>Habilitar Alertas</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
 
-          <div className="border-t border-slate-800/80 pt-3 text-[11px] text-slate-400 font-sans space-y-2">
-            <div className="flex items-center gap-1 font-bold text-slate-300">
-              <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
-              <span>Instrucciones para un funcionamiento 100% confiable:</span>
+              <div className="border-t border-slate-800/80 pt-3 text-[11px] text-slate-400 font-sans space-y-2">
+                <div className="flex items-center gap-1 font-bold text-slate-300">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Instrucciones para un funcionamiento 100% confiable:</span>
+                </div>
+                <ul className="list-disc pl-4 space-y-1.5 text-slate-400 leading-normal">
+                  <li>
+                    <span className="font-semibold text-emerald-400">¿Cerrar u Ocultar?</span> Puedes minimizar la aplicación si habilitas <strong className="text-white">Alertas del Teléfono</strong> arriba. La alarma sonará a través de un aviso oficial del sistema operativo.
+                  </li>
+                  <li>
+                    <span className="font-semibold text-emerald-400">iOS (Safari / iPhone):</span> Es sumamente recomendado <strong className="text-white">Instalar la App</strong> (Compartir → Añadir a pantalla de inicio). Esto evita que el navegador desactive la app por inactividad.
+                  </li>
+                  <li>
+                    <span className="font-semibold text-emerald-400">Android (Chrome / MIUI):</span> Mantén presionado el icono de la App en tu pantalla de inicio → <strong className="text-white">Información de la aplicación</strong> → <strong className="text-white">Ahorro de batería</strong> y selecciona <strong className="text-white">Sin restricciones</strong>. Esto permite temporizadores indefinidos de fondo.
+                  </li>
+                  <li>
+                    <span className="font-semibold text-emerald-400">¿Celular apagado por completo?</span> Si el teléfono está apagado físicamente, ningún software web puede ejecutarse. Te recomendamos dejar el teléfono encendido o en reposo sobre un soporte de carga.
+                  </li>
+                </ul>
+              </div>
             </div>
-            <ul className="list-disc pl-4 space-y-1.5 text-slate-400 leading-normal">
-              <li>
-                <span className="font-semibold text-emerald-400">¿Cerrar u Ocultar?</span> Puedes minimizar la aplicación si habilitas <strong className="text-white">Alertas del Teléfono</strong> arriba. La alarma sonará a través de un aviso oficial del sistema operativo.
-              </li>
-              <li>
-                <span className="font-semibold text-emerald-400">iOS (Safari / iPhone):</span> Es sumamente recomendado <strong className="text-white">Instalar la App</strong> (Compartir → Añadir a pantalla de inicio). Esto evita que el navegador desactive la app por inactividad.
-              </li>
-              <li>
-                <span className="font-semibold text-emerald-400">Android (Chrome / MIUI):</span> Mantén presionado el icono de la App en tu pantalla de inicio → <strong className="text-white">Información de la aplicación</strong> → <strong className="text-white">Ahorro de batería</strong> y selecciona <strong className="text-white">Sin restricciones</strong>. Esto permite temporizadores indefinidos de fondo.
-              </li>
-              <li>
-                <span className="font-semibold text-emerald-400">¿Celular apagado por completo?</span> Si el teléfono está apagado físicamente, ningún software web puede ejecutarse. Te recomendamos dejar el teléfono encendido o en reposo sobre un soporte de carga.
-              </li>
-            </ul>
-          </div>
+          )}
         </div>
 
         {/* Navigation Grid of the Four Mandatory Buttons */}
